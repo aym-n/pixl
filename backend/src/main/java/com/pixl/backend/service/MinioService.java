@@ -21,12 +21,28 @@ import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
 import io.minio.messages.Item;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
+
 @Service
 public class MinioService {
     private final MinioClient minioClient;
 
-    public MinioService(MinioClient minioClient) {
+    private final Tracer tracer;
+    private final Counter minioUploadCounter;
+    private final Counter minioDownloadCounter;
+    private final Counter minioDeleteCounter;
+
+    public MinioService(MinioClient minioClient, Tracer tracer, MeterRegistry meterRegistry) {
         this.minioClient = minioClient;
+        this.tracer = tracer;
+        this.minioUploadCounter = meterRegistry.counter("minio.upload.total");
+        this.minioDownloadCounter = meterRegistry.counter("minio.download.total");
+        this.minioDeleteCounter = meterRegistry.counter("minio.delete.total");
     }
 
     @Value("${minio.bucket.videos-original}")
@@ -60,15 +76,35 @@ public class MinioService {
         }
     }
 
-    public void uploadFile(String bucketName, String objectName, InputStream inputStream, long size, String contentType) throws Exception {
-        minioClient.putObject(
-            PutObjectArgs.builder()
-                .bucket(bucketName)
-                .object(objectName)
-                .stream(inputStream, size, -1)
-                .contentType(contentType)
-                .build()
-        );
+    public void uploadFile(String bucketName, String objectName, InputStream inputStream, 
+                        long size, String contentType) throws Exception {
+        Span span = tracer.spanBuilder("minio-upload").startSpan();
+        
+        try (Scope scope = span.makeCurrent()) {
+            span.setAttribute("bucket", bucketName);
+            span.setAttribute("object", objectName);
+            span.setAttribute("size", size);
+            span.setAttribute("content.type", contentType);
+            
+            minioClient.putObject(
+                PutObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectName)
+                    .stream(inputStream, size, -1)
+                    .contentType(contentType)
+                    .build()
+            );
+            
+            minioUploadCounter.increment();
+            span.addEvent("File uploaded to MinIO");
+            
+        } catch (Exception e) {
+            span.recordException(e);
+            span.setStatus(StatusCode.ERROR, e.getMessage());
+            throw e;
+        } finally {
+            span.end();
+        }
     }
 
     /* Upload ByteArray */
@@ -80,12 +116,30 @@ public class MinioService {
 
 
     public InputStream downloadFile(String bucketName, String objectName) throws Exception {
-        return minioClient.getObject(
-            GetObjectArgs.builder()
-                .bucket(bucketName)
-                .object(objectName)
-                .build()
-        );
+        Span span = tracer.spanBuilder("minio-download").startSpan();
+        
+        try (Scope scope = span.makeCurrent()) {
+            span.setAttribute("bucket", bucketName);
+            span.setAttribute("object", objectName);
+            
+            InputStream stream = minioClient.getObject(
+                GetObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectName)
+                    .build()
+            );
+            
+            minioDownloadCounter.increment();
+            span.addEvent("File downloaded from MinIO");
+            
+            return stream;
+        } catch (Exception e) {
+            span.recordException(e);
+            span.setStatus(StatusCode.ERROR, e.getMessage());
+            throw e;
+        } finally {
+            span.end();
+        }
     }
 
     /* Dowload ByteArray */
@@ -97,12 +151,29 @@ public class MinioService {
     
 
     public void deleteFile(String bucketName, String objectName) throws Exception {
-        minioClient.removeObject(
-            RemoveObjectArgs.builder()
-                .bucket(bucketName)
-                .object(objectName)
-                .build()
-        );
+        Span span = tracer.spanBuilder("minio-delete").startSpan();
+        
+        try (Scope scope = span.makeCurrent()) {
+            span.setAttribute("bucket", bucketName);
+            span.setAttribute("object", objectName);
+            
+            minioClient.removeObject(
+                RemoveObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectName)
+                    .build()
+            );
+            
+            minioDeleteCounter.increment();
+            span.addEvent("File deleted from MinIO");
+            
+        } catch (Exception e) {
+            span.recordException(e);
+            span.setStatus(StatusCode.ERROR, e.getMessage());
+            throw e;
+        } finally {
+            span.end();
+        }
     }
 
     public void deleteFiles(String bucketName, List<String> objectNames) {

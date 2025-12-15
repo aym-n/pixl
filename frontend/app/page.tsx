@@ -10,12 +10,20 @@ export default function Home() {
         <p className="text-xl text-gray-600 mb-8">
           Upload, transcode, and stream videos
         </p>
-        <Link
-          href="/upload"
-          className="bg-blue-600 text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-blue-700 transition"
-        >
-          Upload Video
-        </Link>
+        <div className="flex gap-4 justify-center">
+          <Link
+            href="/upload"
+            className="bg-blue-600 text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-blue-700 transition"
+          >
+            Upload Video
+          </Link>
+          <Link
+            href="/videos"
+            className="bg-white text-blue-600 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-gray-50 transition border-2 border-blue-600"
+          >
+            My Videos
+          </Link>
+        </div>
       </div>
     </div>
   );
