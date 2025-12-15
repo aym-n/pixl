@@ -35,7 +35,7 @@ public class VideoService {
         video.setOriginalFilename(file.getOriginalFilename());
         video.setFilePath(filePath.toString());
         video.setFileSize(file.getSize());
-        
+
         return videoRepository.save(video);
     }
 
@@ -43,7 +43,7 @@ public class VideoService {
         return videoRepository.findAll();
     }
 
-    public Video getVideoById(String id) {
+    public Video getVideo(String id) {
         return videoRepository.findById(id).orElseThrow(() -> new RuntimeException("Video not found"));
     }
 
