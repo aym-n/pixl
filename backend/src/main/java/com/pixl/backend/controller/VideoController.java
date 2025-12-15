@@ -5,6 +5,7 @@ import com.pixl.backend.dto.InitiateUploadResponse;
 import com.pixl.backend.dto.UploadProgressResponse;
 import com.pixl.backend.model.Video;
 import com.pixl.backend.service.ChunkedUploadService;
+import com.pixl.backend.service.MinioService;
 import com.pixl.backend.service.VideoService;
 
 import java.util.List;
@@ -20,10 +21,12 @@ public class VideoController {
 
     private final VideoService videoService;
     private final ChunkedUploadService chunkedUploadService;
+    private final MinioService minioService;
 
-    public VideoController(VideoService videoService, ChunkedUploadService chunkedUploadService) {
+    public VideoController(VideoService videoService, ChunkedUploadService chunkedUploadService, MinioService minioService) {
         this.videoService = videoService;
         this.chunkedUploadService = chunkedUploadService;
+        this.minioService = minioService;
     }
 
     @PostMapping("/upload/initiate")
@@ -84,5 +87,25 @@ public class VideoController {
     @GetMapping("/{id}")
     public ResponseEntity<Video> getVideo(@PathVariable String id) {
         return ResponseEntity.ok(videoService.getVideo(id));
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<byte[]> downloadVideo(@PathVariable String id) {
+        try {
+            Video video = videoService.getVideo(id);
+            
+            byte[] videoData = minioService.downloadFileAsBytes(
+                "videos-original", 
+                video.getFilePath()
+            );
+            
+            return ResponseEntity.ok()
+                .header("Content-Type", "video/mp4")
+                .header("Content-Disposition", "attachment; filename=\"" + video.getOriginalFilename() + "\"")
+                .body(videoData);
+                
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

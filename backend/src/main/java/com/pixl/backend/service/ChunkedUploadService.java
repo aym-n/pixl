@@ -1,8 +1,8 @@
 package com.pixl.backend.service;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -24,24 +24,18 @@ import com.pixl.backend.repository.VideoRepository;
 public class ChunkedUploadService {
     private final UploadSessionRepository uploadSessionRepository;
     private final VideoRepository videoRepository;
+    private final MinioService minioService;
 
-    @Value("${app.upload.directory}")
-    private String uploadDirectory;
-    
-    @Value("${app.upload.chunk-directory}")
-    private String chunkDirectory;
-    
     @Value("${app.upload.chunk-size}")
     private Integer defaultChunkSize;
     
-    public ChunkedUploadService(UploadSessionRepository uploadSessionRepository, VideoRepository videoRepository) {
+    public ChunkedUploadService(UploadSessionRepository uploadSessionRepository, VideoRepository videoRepository, MinioService minioService) {
         this.uploadSessionRepository = uploadSessionRepository;
         this.videoRepository = videoRepository;
+        this.minioService = minioService;
     }
 
     public InitiateUploadResponse initiateUpload(String filename, Long fileSize, String title, String description) throws IOException{
-        Files.createDirectories(Paths.get(chunkDirectory));
-        Files.createDirectories(Paths.get(uploadDirectory));
 
         String uploadId = UUID.randomUUID().toString();
 
@@ -57,24 +51,24 @@ public class ChunkedUploadService {
         video.setStatus(VideoStatus.UPLOADED);
 
         videoRepository.save(video);
+
+        System.out.println("[ChunkedUpload] Initiated upload: " + uploadId + " for file: " + filename);
+
         return new InitiateUploadResponse(uploadId, defaultChunkSize, session.getTotalChunks());
     }
 
-    public UploadProgressResponse uploadChunk(String uploadId, Integer chunkNumber, MultipartFile chunk) throws IOException{
+    public UploadProgressResponse uploadChunk(String uploadId, Integer chunkNumber, MultipartFile chunk) throws Exception{
         UploadSession session = uploadSessionRepository.findById(uploadId)
                 .orElseThrow(() -> new RuntimeException("Upload session not found"));
 
-        if(session.getUploadedChunks().contains(chunkNumber)) {
-            throw new RuntimeException("Chunk already uploaded");
-        }
-
-        String chunkPath = Paths.get(chunkDirectory, uploadId + "_chunk_" + chunkNumber).toString();
-        Files.copy(chunk.getInputStream(), Paths.get(chunkPath));
+        String chunkObjectName = uploadId + "_chunk_" + chunkNumber;
+        minioService.uploadChunk(chunkObjectName, chunk.getBytes());
 
         session.addChunk(chunkNumber);
         uploadSessionRepository.save(session);
 
-                return new UploadProgressResponse(
+        System.out.println("[ChunkedUpload] Uploaded chunk " + chunkNumber + " for uploadId: " + uploadId);
+        return new UploadProgressResponse(
             uploadId,
             session.getUploadedChunks().size(),
             session.getTotalChunks(),
@@ -83,7 +77,7 @@ public class ChunkedUploadService {
         );
     }
 
-    public Video completeUpload(String uploadId) throws IOException{
+    public Video completeUpload(String uploadId) throws Exception{
         UploadSession session = uploadSessionRepository.findById(uploadId)
                 .orElseThrow(() -> new RuntimeException("Upload session not found"));
 
@@ -91,13 +85,26 @@ public class ChunkedUploadService {
             throw new RuntimeException("Upload is not complete");
         }
 
-        String finalFilePath = Paths.get(uploadDirectory, session.getFilename()).toString();
-        Files.createFile(Paths.get(finalFilePath));
+        System.out.println("[ChunkedUpload] Completing upload for uploadId: " + uploadId);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
         for(int i = 0; i < session.getTotalChunks(); i++) {
-            String chunkPath = Paths.get(chunkDirectory, uploadId + "_chunk_" + i).toString();
-            Files.write(Paths.get(finalFilePath), Files.readAllBytes(Paths.get(chunkPath)), java.nio.file.StandardOpenOption.APPEND);
-            Files.delete(Paths.get(chunkPath));
+            String chunkObjectName = uploadId + "_chunk_" + i;
+            byte[] chunkData = minioService.downloadChunk(chunkObjectName);
+            outputStream.write(chunkData);
+
+            minioService.deleteChunk(chunkObjectName);
+        }
+
+        byte[] finalFileData = outputStream.toByteArray();
+
+        String fileExtension = session.getFilename().substring(
+            session.getFilename().lastIndexOf(".")
+        );
+        String finalObjectName = uploadId + fileExtension;
+        
+        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(finalFileData)) {
+            minioService.uploadOriginalVideo(finalObjectName, inputStream, finalFileData.length);
         }
 
         session.setStatus(UploadStatus.COMPLETED);
@@ -106,8 +113,12 @@ public class ChunkedUploadService {
         Video video = videoRepository.findById(uploadId)
                 .orElseThrow(() -> new RuntimeException("Video not found"));
 
-        video.setFilePath(finalFilePath);
+        video.setFilePath(finalObjectName);
+        video.setFileSize((long)finalFileData.length);
         video.setStatus(VideoStatus.READY);
+
+        System.out.println("[ChunkedUpload] Upload completed for uploadId: " + uploadId);
+
         return videoRepository.save(video);
     }
 
