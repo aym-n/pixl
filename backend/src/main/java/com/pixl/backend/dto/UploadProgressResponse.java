@@ -1,7 +1,5 @@
 package com.pixl.backend.dto;
 
-import java.io.ObjectInputFilter.Status;
-
 public class UploadProgressResponse {
     private String uploadId;
     private Integer uploadedChunks;
