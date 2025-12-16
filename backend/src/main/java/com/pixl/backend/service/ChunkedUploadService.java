@@ -31,6 +31,7 @@ import io.micrometer.core.instrument.Timer;
 public class ChunkedUploadService {
     private final UploadSessionRepository uploadSessionRepository;
     private final VideoRepository videoRepository;
+    private final TranscodeService transcodeService;
     private final MinioService minioService;
     private final Tracer tracer;
     private final Counter videoUploadCounter;
@@ -41,7 +42,7 @@ public class ChunkedUploadService {
     @Value("${app.upload.chunk-size}")
     private Integer defaultChunkSize;
     
-    public ChunkedUploadService(UploadSessionRepository uploadSessionRepository, VideoRepository videoRepository, MinioService minioService, Tracer tracer, Counter videoUploadCounter, Counter uploadSuccessCounter, Counter uploadFailureCounter, Timer chunkUploadTimer) {
+    public ChunkedUploadService(UploadSessionRepository uploadSessionRepository, VideoRepository videoRepository, MinioService minioService, Tracer tracer, Counter videoUploadCounter, Counter uploadSuccessCounter, Counter uploadFailureCounter, Timer chunkUploadTimer, TranscodeService transcodeService) {
         this.uploadSessionRepository = uploadSessionRepository;
         this.videoRepository = videoRepository;
         this.minioService = minioService;
@@ -50,6 +51,7 @@ public class ChunkedUploadService {
         this.uploadSuccessCounter = uploadSuccessCounter;
         this.uploadFailureCounter = uploadFailureCounter;
         this.chunkUploadTimer = chunkUploadTimer;
+        this.transcodeService = transcodeService;
     }
 
     public InitiateUploadResponse initiateUpload(String filename, Long fileSize, String title, String description) throws IOException{
@@ -211,6 +213,11 @@ public class ChunkedUploadService {
             video.setFilePath(uploadId + session.getFilename().substring(session.getFilename().lastIndexOf(".")));
             video.setFileSize((long)finalFileData.length);
             video.setStatus(VideoStatus.READY);
+
+            span.addEvent("Queueing transcode jobs");
+            transcodeService.queueTranscodeJobs(uploadId);
+
+            uploadSuccessCounter.increment();
 
             System.out.println("[ChunkedUpload] Upload completed for uploadId: " + uploadId);
             uploadSuccessCounter.increment();
