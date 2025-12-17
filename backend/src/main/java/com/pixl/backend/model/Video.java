@@ -33,7 +33,11 @@ public class Video {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    protected Video() {}
+    @Column(name = "thumbnail_path")
+    private String thumbnailPath;
+
+    protected Video() {
+    }
 
     public Video(String title, String description) {
         this.title = title;
@@ -106,5 +110,13 @@ public class Video {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getThumbnailPath() {
+        return thumbnailPath;
+    }
+
+    public void setThumbnailPath(String thumbnailPath) {
+        this.thumbnailPath = thumbnailPath;
     }
 }

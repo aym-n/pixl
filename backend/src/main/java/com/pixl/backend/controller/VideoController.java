@@ -23,7 +23,8 @@ public class VideoController {
     private final ChunkedUploadService chunkedUploadService;
     private final MinioService minioService;
 
-    public VideoController(VideoService videoService, ChunkedUploadService chunkedUploadService, MinioService minioService) {
+    public VideoController(VideoService videoService, ChunkedUploadService chunkedUploadService,
+            MinioService minioService) {
         this.videoService = videoService;
         this.chunkedUploadService = chunkedUploadService;
         this.minioService = minioService;
@@ -33,32 +34,30 @@ public class VideoController {
     public ResponseEntity<InitiateUploadResponse> initiateUpload(@RequestBody InitiateUploadRequest request) {
         try {
             InitiateUploadResponse response = chunkedUploadService.initiateUpload(
-                request.getFilename(),
-                request.getFileSize(),
-                request.getTitle(),
-                request.getDescription()
-            );
+                    request.getFilename(),
+                    request.getFileSize(),
+                    request.getTitle(),
+                    request.getDescription());
             return ResponseEntity.ok(response);
-        }catch (Exception e) {
+        } catch (Exception e) {
             return ResponseEntity.status(500).build();
         }
     }
 
-        @PostMapping("/upload/chunk")
+    @PostMapping("/upload/chunk")
     public ResponseEntity<UploadProgressResponse> uploadChunk(
             @RequestParam("uploadId") String uploadId,
             @RequestParam("chunkNumber") Integer chunkNumber,
             @RequestParam("chunk") MultipartFile chunk) {
         try {
             UploadProgressResponse response = chunkedUploadService.uploadChunk(
-                uploadId, chunkNumber, chunk
-            );
+                    uploadId, chunkNumber, chunk);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }
     }
-    
+
     @PostMapping("/upload/complete")
     public ResponseEntity<Video> completeUpload(@RequestParam("uploadId") String uploadId) {
         try {
@@ -68,7 +67,7 @@ public class VideoController {
             return ResponseEntity.internalServerError().build();
         }
     }
-    
+
     @GetMapping("/upload/progress/{uploadId}")
     public ResponseEntity<UploadProgressResponse> getProgress(@PathVariable String uploadId) {
         try {
@@ -78,12 +77,12 @@ public class VideoController {
             return ResponseEntity.internalServerError().build();
         }
     }
-    
+
     @GetMapping
     public ResponseEntity<List<Video>> getAllVideos() {
         return ResponseEntity.ok(videoService.getAllVideos());
     }
-    
+
     @GetMapping("/{id}")
     public ResponseEntity<Video> getVideo(@PathVariable String id) {
         return ResponseEntity.ok(videoService.getVideo(id));
@@ -93,17 +92,39 @@ public class VideoController {
     public ResponseEntity<byte[]> downloadVideo(@PathVariable String id) {
         try {
             Video video = videoService.getVideo(id);
-            
+
             byte[] videoData = minioService.downloadFileAsBytes(
-                "videos-original", 
-                video.getFilePath()
-            );
-            
+                    "videos-original",
+                    video.getFilePath());
+
             return ResponseEntity.ok()
-                .header("Content-Type", "video/mp4")
-                .header("Content-Disposition", "attachment; filename=\"" + video.getOriginalFilename() + "\"")
-                .body(videoData);
-                
+                    .header("Content-Type", "video/mp4")
+                    .header("Content-Disposition", "attachment; filename=\"" + video.getOriginalFilename() + "\"")
+                    .body(videoData);
+
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{id}/thumbnail")
+    public ResponseEntity<byte[]> getThumbnail(@PathVariable String id) {
+        try {
+            Video video = videoService.getVideo(id);
+
+            if (video.getThumbnailPath() == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            byte[] thumbnailData = minioService.downloadFileAsBytes(
+                    "thumbnails",
+                    video.getThumbnailPath());
+
+            return ResponseEntity.ok()
+                    .header("Content-Type", "image/jpeg")
+                    .header("Cache-Control", "max-age=86400") // Cache for 1 day
+                    .body(thumbnailData);
+
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }
