@@ -23,6 +23,7 @@ import com.pixl.backend.model.VideoStatus;
 import com.pixl.backend.repository.TranscodeJobRepository;
 import com.pixl.backend.repository.VideoRepository;
 import com.pixl.backend.service.FFmpegService;
+import com.pixl.backend.service.HLSService;
 import com.pixl.backend.service.MinioService;
 
 import java.io.InputStream;
@@ -43,6 +44,7 @@ public class TranscodeWorker {
     private final Timer transcodeTimer;
     private final Counter transcodeSuccessCounter;
     private final Counter transcodeFailureCounter;
+    private final HLSService hlsService;
 
     @Value("${minio.bucket.videos-original}")
     private String originalBucket;
@@ -57,7 +59,8 @@ public class TranscodeWorker {
             MinioService minioService,
             FFmpegService ffmpegService,
             Tracer tracer,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            HLSService hlsService) {
         this.transcodeJobRepository = transcodeJobRepository;
         this.videoRepository = videoRepository;
         this.minioService = minioService;
@@ -66,6 +69,7 @@ public class TranscodeWorker {
         this.transcodeTimer = meterRegistry.timer("transcode.duration");
         this.transcodeSuccessCounter = meterRegistry.counter("transcode.success");
         this.transcodeFailureCounter = meterRegistry.counter("transcode.failure");
+        this.hlsService = hlsService;
 
         System.out.println("🤖 Transcode Worker started: " + workerId);
     }
@@ -219,6 +223,13 @@ public class TranscodeWorker {
         Video video = videoRepository.findById(videoId).orElse(null);
         if (video != null) {
             if (allCompleted) {
+
+                try {
+                    System.out.println("All transcodes complete, generating HLS...");
+                    hlsService.generateHLS(videoId);
+                } catch (Exception e) {
+                    System.err.println("HLS generation failed: " + e.getMessage());
+                }
                 video.setStatus(VideoStatus.READY);
                 videoRepository.save(video);
                 System.out.println("✅ All transcode jobs completed for video: " + videoId);

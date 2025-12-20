@@ -129,4 +129,57 @@ public class VideoController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    @GetMapping("/{id}/stream/master.m3u8")
+    public ResponseEntity<String> getMasterPlaylist(@PathVariable String id) {
+        try {
+            String objectName = id + "/hls/master.m3u8";
+            byte[] content = minioService.downloadFileAsBytes("videos-transcoded", objectName);
+
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/vnd.apple.mpegurl")
+                    .header("Cache-Control", "max-age=10")
+                    .body(new String(content));
+
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/{id}/stream/{quality}/playlist.m3u8")
+    public ResponseEntity<String> getQualityPlaylist(
+            @PathVariable String id,
+            @PathVariable String quality) {
+        try {
+            String objectName = id + "/hls/" + quality + "/playlist.m3u8";
+            byte[] content = minioService.downloadFileAsBytes("videos-transcoded", objectName);
+
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/vnd.apple.mpegurl")
+                    .header("Cache-Control", "max-age=3600")
+                    .body(new String(content));
+
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/{id}/stream/{quality}/{segment}")
+    public ResponseEntity<byte[]> getSegment(
+            @PathVariable String id,
+            @PathVariable String quality,
+            @PathVariable String segment) {
+        try {
+            String objectName = id + "/hls/" + quality + "/" + segment;
+            byte[] content = minioService.downloadFileAsBytes("videos-transcoded", objectName);
+
+            return ResponseEntity.ok()
+                    .header("Content-Type", "video/mp2t")
+                    .header("Cache-Control", "max-age=31536000") // Cache segments for 1 year
+                    .body(content);
+
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
 }

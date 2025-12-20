@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FileVideo, HardDrive, Calendar, Download, Plus, Film, Loader2, PlayCircle } from 'lucide-react';
 
+import { useRouter } from 'next/navigation';
+
 interface Video {
   id: string;
   title: string;
@@ -18,6 +20,8 @@ interface Video {
 export default function VideosPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const router = useRouter();
 
   useEffect(() => {
     fetchVideos();
@@ -128,8 +132,8 @@ export default function VideosPage() {
                     <div className="flex items-start justify-between mb-1">
                       <h3 className="text-lg font-bold text-gray-900 truncate pr-4">{video.title}</h3>
                       <span className={`flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${video.status === 'READY'
-                          ? 'bg-green-100 text-green-700 border border-green-200'
-                          : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
                         }`}>
                         {video.status}
                       </span>
@@ -166,6 +170,13 @@ export default function VideosPage() {
                       Download
                     </a>
                   </div>
+
+                  <button
+                    onClick={() => router.push(`/videos/${video.id}`)}
+                    className="flex-1 bg-gray-600 text-white px-3 py-2 rounded-md hover:bg-gray-700 transition text-sm"
+                  >
+                    {video.status === 'READY' ? 'Watch' : 'Details'}
+                  </button>
                 </div>
               ))}
             </div>
