@@ -2,10 +2,12 @@
 
 import { useState, useRef } from 'react';
 import { UploadCloud, X, FileVideo, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 
 export default function UploadPage() {
+  const router = useRouter();
   // UI State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -123,6 +125,7 @@ export default function UploadPage() {
 
       if (!completeResponse.ok) throw new Error('Failed to complete upload');
       const video = await completeResponse.json();
+      router.push(`/upload/progress/${video.id}`);
 
       setStatus({ type: 'success', message: `Video uploaded successfully! ID: ${video.id}` });
       
@@ -131,6 +134,8 @@ export default function UploadPage() {
       setDescription('');
       setFile(null);
       if (inputRef.current) inputRef.current.value = '';
+
+      
       
     } catch (error) {
       console.error(error);

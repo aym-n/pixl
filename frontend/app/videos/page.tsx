@@ -177,6 +177,15 @@ export default function VideosPage() {
                   >
                     {video.status === 'READY' ? 'Watch' : 'Details'}
                   </button>
+
+                  {video.status === 'PROCESSING' && (
+                    <Link
+                      href={`/upload/progress/${video.id}`}
+                      className="flex-1 bg-yellow-600 text-white px-3 py-2 rounded-md hover:bg-yellow-700 transition text-sm text-center"
+                    >
+                      View Progress
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>

@@ -30,6 +30,7 @@ public class TranscodeService {
     private final RabbitTemplate rabbitTemplate;
     private final Tracer tracer;
     private final Counter jobQueuedCounter;
+    private final ProgressNotificationService progressNotificationService;
 
     @Value("${app.transcode.queue}")
     private String transcodeQueue;
@@ -37,12 +38,13 @@ public class TranscodeService {
     @Value("${app.transcode.qualities}")
     private String qualities;
 
-    public TranscodeService(TranscodeJobRepository transcodeJobRepository, VideoRepository videoRepository, RabbitTemplate rabbitTemplate, Tracer tracer, MeterRegistry meterRegistry) {
+    public TranscodeService(TranscodeJobRepository transcodeJobRepository, VideoRepository videoRepository, RabbitTemplate rabbitTemplate, Tracer tracer, MeterRegistry meterRegistry, ProgressNotificationService progressNotificationService) {
         this.transcodeJobRepository = transcodeJobRepository;
         this.videoRepository = videoRepository;
         this.rabbitTemplate = rabbitTemplate;
         this.tracer = tracer;
         this.jobQueuedCounter = meterRegistry.counter("transcode.job.queued");
+        this.progressNotificationService = progressNotificationService;
     }
 
     public void queueTranscodeJobs(String videoId){
@@ -56,6 +58,7 @@ public class TranscodeService {
 
             List<String> qualityLevels = Arrays.asList(qualities.split(","));
             span.setAttribute("quality.count", qualityLevels.size());
+            progressNotificationService.sendTranscodeQueued(videoId);
 
             for(String quality: qualityLevels){
                 Span jobSpan = tracer.spanBuilder("TranscodeService.createTranscodeJob").startSpan();

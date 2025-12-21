@@ -25,6 +25,7 @@ import com.pixl.backend.repository.VideoRepository;
 import com.pixl.backend.service.FFmpegService;
 import com.pixl.backend.service.HLSService;
 import com.pixl.backend.service.MinioService;
+import com.pixl.backend.service.ProgressNotificationService;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -45,6 +46,7 @@ public class TranscodeWorker {
     private final Counter transcodeSuccessCounter;
     private final Counter transcodeFailureCounter;
     private final HLSService hlsService;
+    private final ProgressNotificationService progressNotificationService;
 
     @Value("${minio.bucket.videos-original}")
     private String originalBucket;
@@ -60,7 +62,8 @@ public class TranscodeWorker {
             FFmpegService ffmpegService,
             Tracer tracer,
             MeterRegistry meterRegistry,
-            HLSService hlsService) {
+            HLSService hlsService,
+            ProgressNotificationService progressNotificationService) {
         this.transcodeJobRepository = transcodeJobRepository;
         this.videoRepository = videoRepository;
         this.minioService = minioService;
@@ -70,6 +73,7 @@ public class TranscodeWorker {
         this.transcodeSuccessCounter = meterRegistry.counter("transcode.success");
         this.transcodeFailureCounter = meterRegistry.counter("transcode.failure");
         this.hlsService = hlsService;
+        this.progressNotificationService = progressNotificationService;
 
         System.out.println("🤖 Transcode Worker started: " + workerId);
     }
@@ -124,6 +128,7 @@ public class TranscodeWorker {
         transcodeJobRepository.save(job);
 
         parentSpan.addEvent("Job status updated to PROCESSING");
+        progressNotificationService.sendTranscodeStarted(message.getVideoId(), message.getQuality(), workerId);
 
         Span downloadSpan = tracer.spanBuilder("download-original-video").startSpan();
         Path inputPath = null;
@@ -171,6 +176,7 @@ public class TranscodeWorker {
             System.out.println("  ⬆️  Uploaded " + message.getQuality() + ": " +
                     (outputSize / 1024 / 1024) + " MB");
 
+            progressNotificationService.sendTranscodeComplete(message.getVideoId(), message.getQuality());
             job.setStatus(TranscodeStatus.COMPLETED);
             job.setCompletedAt(LocalDateTime.now());
             job.setOutputPath(outputObjectName);
@@ -226,6 +232,7 @@ public class TranscodeWorker {
 
                 try {
                     System.out.println("All transcodes complete, generating HLS...");
+                    progressNotificationService.sendHLSGenerationStarted(videoId);
                     hlsService.generateHLS(videoId);
                 } catch (Exception e) {
                     System.err.println("HLS generation failed: " + e.getMessage());
@@ -233,6 +240,7 @@ public class TranscodeWorker {
                 video.setStatus(VideoStatus.READY);
                 videoRepository.save(video);
                 System.out.println("✅ All transcode jobs completed for video: " + videoId);
+                progressNotificationService.sendHLSGenerationComplete(videoId);
             } else if (anyFailed) {
                 video.setStatus(VideoStatus.FAILED);
                 videoRepository.save(video);

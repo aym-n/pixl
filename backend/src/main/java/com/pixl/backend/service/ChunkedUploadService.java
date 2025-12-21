@@ -36,6 +36,7 @@ public class ChunkedUploadService {
     private final Counter uploadSuccessCounter;
     private final Counter uploadFailureCounter;
     private final Timer chunkUploadTimer;
+    private final ProgressNotificationService progressNotificationService;
 
     private final ThumbnailService thumbnailService;
 
@@ -45,7 +46,7 @@ public class ChunkedUploadService {
     public ChunkedUploadService(UploadSessionRepository uploadSessionRepository, VideoRepository videoRepository,
             MinioService minioService, Tracer tracer, Counter videoUploadCounter, Counter uploadSuccessCounter,
             Counter uploadFailureCounter, Timer chunkUploadTimer, TranscodeService transcodeService,
-            ThumbnailService thumbnailService) {
+            ThumbnailService thumbnailService, ProgressNotificationService progressNotificationService) {
         this.uploadSessionRepository = uploadSessionRepository;
         this.videoRepository = videoRepository;
         this.minioService = minioService;
@@ -56,6 +57,7 @@ public class ChunkedUploadService {
         this.chunkUploadTimer = chunkUploadTimer;
         this.transcodeService = transcodeService;
         this.thumbnailService = thumbnailService;
+        this.progressNotificationService = progressNotificationService;
     }
 
     public InitiateUploadResponse initiateUpload(String filename, Long fileSize, String title, String description)
@@ -125,10 +127,13 @@ public class ChunkedUploadService {
 
                     span.addEvent("Chunk uploaded to MinIO");
 
+                    int progressPercent = (int) session.getProgress();
+                    progressNotificationService.sendUploadProgress(uploadId, progressPercent);
+
                     session.addChunk(chunkNumber);
                     uploadSessionRepository.save(session);
 
-                    span.setAttribute("progress", session.getProgress());
+                    span.setAttribute("progress", progressPercent);
                     span.setAttribute("uploaded.chunks", session.getUploadedChunks().size());
 
                     System.out.println("[ChunkedUpload] Uploaded chunk " + chunkNumber + " for uploadId: " + uploadId);
@@ -205,6 +210,7 @@ public class ChunkedUploadService {
                 uploadSpan.end();
             }
 
+            progressNotificationService.sendUploadComplete(uploadId);
             session.setStatus(UploadStatus.COMPLETED);
             uploadSessionRepository.save(session);
 
@@ -217,6 +223,7 @@ public class ChunkedUploadService {
 
             span.addEvent("Queueing transcode jobs");
             transcodeService.queueTranscodeJobs(uploadId);
+            progressNotificationService.sendTranscodeQueued(uploadId);
             try {
                 thumbnailService.generateThumbnail(uploadId);
             } catch (Exception e) {
