@@ -76,32 +76,53 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
+		<!-- Spring Boot Actuator (for metrics endpoint) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<!-- Micrometer for Prometheus -->
 		<dependency>
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-registry-prometheus</artifactId>
 		</dependency>
 
+		<!-- OpenTelemetry BOM - manages all OTel versions -->
+		<dependency>
+			<groupId>io.opentelemetry</groupId>
+			<artifactId>opentelemetry-bom</artifactId>
+			<version>1.42.1</version>
+			<type>pom</type>
+			<scope>import</scope>
+		</dependency>
+
+		<!-- OpenTelemetry API -->
 		<dependency>
 			<groupId>io.opentelemetry</groupId>
 			<artifactId>opentelemetry-api</artifactId>
-			<version>1.32.0</version>
+			<version>1.42.1</version>
 		</dependency>
 
+		<!-- OpenTelemetry SDK -->
 		<dependency>
 			<groupId>io.opentelemetry</groupId>
 			<artifactId>opentelemetry-sdk</artifactId>
-			<version>1.32.0</version>
+			<version>1.42.1</version>
 		</dependency>
 
+		<!-- OpenTelemetry OTLP Exporter -->
 		<dependency>
 			<groupId>io.opentelemetry</groupId>
 			<artifactId>opentelemetry-exporter-otlp</artifactId>
+			<version>1.42.1</version>
 		</dependency>
 
+		<!-- OpenTelemetry Semantic Conventions -->
 		<dependency>
-			<groupId>io.opentelemetry.instrumentation</groupId>
-			<artifactId>opentelemetry-spring-boot-starter</artifactId>
-			<version>1.32.0-alpha</version>
+			<groupId>io.opentelemetry.semconv</groupId>
+			<artifactId>opentelemetry-semconv</artifactId>
+			<version>1.25.0-alpha</version>
 		</dependency>
 
 		<dependency>
