@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Hls from 'hls.js';
 
+import { useAnalytics } from '@/hooks/useAnalytics';
+
 interface Video {
   id: string;
   title: string;
@@ -39,6 +41,12 @@ export default function VideoPlayerPage() {
   const [playbackRate, setPlaybackRate] = useState(1);
 
   const videoId = params.id as string;
+  const { trackEvent } = useAnalytics(videoId);
+
+  // Track when component mounts (view)
+  useEffect(() => {
+    trackEvent({ eventType: 'view' });
+  }, [trackEvent]);
 
   useEffect(() => {
     fetchVideo();
@@ -87,9 +95,6 @@ export default function VideoPlayerPage() {
       hls.attachMedia(videoElement);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-        console.log('HLS manifest loaded, found ' + data.levels.length + ' quality levels');
-        
-        // Extract quality info
         const qualityLevels = data.levels.map((level: any, index: number) => ({
           name: getQualityName(level.height),
           resolution: `${level.width}x${level.height}`,
@@ -100,25 +105,18 @@ export default function VideoPlayerPage() {
         setQualities(qualityLevels);
       });
 
+      // Track buffering
       hls.on(Hls.Events.ERROR, (event, data) => {
-        if (data.fatal) {
-          console.error('Fatal HLS error:', data);
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default:
-              hls.destroy();
-              break;
-          }
+        if (data.details === 'bufferStalledError') {
+          trackEvent({
+            eventType: 'buffer',
+            videoTime: videoElement.currentTime,
+            quality: currentQuality,
+          });
         }
       });
 
     } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
       videoElement.src = hlsUrl;
     }
   };
@@ -135,12 +133,19 @@ export default function VideoPlayerPage() {
     if (!hlsRef.current) return;
 
     if (qualityIndex === -1) {
-      // Auto quality
       hlsRef.current.currentLevel = -1;
       setCurrentQuality('auto');
     } else {
       hlsRef.current.currentLevel = qualityIndex;
-      setCurrentQuality(qualities[qualityIndex].name);
+      const newQuality = qualities[qualityIndex].name;
+      setCurrentQuality(newQuality);
+      
+      // Track quality change
+      trackEvent({
+        eventType: 'quality_change',
+        videoTime: videoRef.current?.currentTime || 0,
+        quality: newQuality,
+      });
     }
   };
 
@@ -150,15 +155,38 @@ export default function VideoPlayerPage() {
     if (videoRef.current.paused) {
       videoRef.current.play();
       setIsPlaying(true);
+      
+      // Track play
+      trackEvent({
+        eventType: 'play',
+        videoTime: videoRef.current.currentTime,
+        quality: currentQuality,
+      });
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
+      
+      // Track pause
+      trackEvent({
+        eventType: 'pause',
+        videoTime: videoRef.current.currentTime,
+        quality: currentQuality,
+      });
     }
   };
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
+      
+      // Track completion (90% watched)
+      if (duration > 0 && videoRef.current.currentTime / duration > 0.9) {
+        trackEvent({
+          eventType: 'complete',
+          videoTime: videoRef.current.currentTime,
+          quality: currentQuality,
+        });
+      }
     }
   };
 
@@ -173,8 +201,34 @@ export default function VideoPlayerPage() {
       const time = parseFloat(e.target.value);
       videoRef.current.currentTime = time;
       setCurrentTime(time);
+      
+      // Track seek
+      trackEvent({
+        eventType: 'seek',
+        videoTime: time,
+        quality: currentQuality,
+      });
     }
   };
+
+  useEffect(() => {
+    fetchVideo();
+  }, [videoId]);
+
+  useEffect(() => {
+    if (video && video.status === 'READY' && videoRef.current) {
+      initializePlayer();
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+      }
+    };
+  }, [video]);
+
+
+
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (videoRef.current) {
