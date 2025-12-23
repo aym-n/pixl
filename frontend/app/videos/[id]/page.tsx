@@ -14,6 +14,7 @@ interface Video {
   fileSize: number;
   status: string;
   createdAt: string;
+  viewCount: number;
 }
 
 interface Quality {
@@ -68,6 +69,9 @@ export default function VideoPlayerPage() {
     try {
       const response = await fetch(`http://localhost:8080/api/videos/${videoId}`);
       const data = await response.json();
+      const viewResponse = await fetch(`http://localhost:8080/api/analytics/videos/${videoId}/views`);
+      const views = await viewResponse.json();
+      data.viewCount = views;
       setVideo(data);
     } catch (error) {
       console.error('Failed to fetch video:', error);
@@ -448,6 +452,7 @@ export default function VideoPlayerPage() {
           <span>📁 {video.originalFilename}</span>
           <span>💾 {(video.fileSize / 1024 / 1024).toFixed(2)} MB</span>
           <span>📅 {new Date(video.createdAt).toLocaleDateString()}</span>
+          <span>👁️ {video.viewCount.toLocaleString()} views</span>
         </div>
 
         <button
