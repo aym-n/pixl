@@ -170,7 +170,7 @@ export default function UploadPage() {
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]"></div>
       <Header />
 
-      <div className="h-max flex items-center justify-center z-10 relative py-20 px-4">
+      <div className="h-screen flex items-center justify-center z-10 relative py-20 px-4">
         <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl overflow-hidden">
           <div className="bg-gray-900 px-8 py-3">
             <h1 className="text-2xl font-bold text-white">Upload Video</h1>

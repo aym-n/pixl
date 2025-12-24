@@ -13,7 +13,7 @@ export default function Home() {
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]"></div>
         <Header />
 
-        <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 pt-20 pb-32">
+        <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 pt-32 pb-32 h-screen">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 backdrop-blur-sm border border-white/10 mb-8 group hover:bg-white/10 transition-all duration-300 cursor-pointer">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
             <span className="text-sm text-slate-300">Now available worldwide</span>
