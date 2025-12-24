@@ -40,7 +40,7 @@ public class VideoService {
     }
 
     public List<Video> getAllVideos() {
-        return videoRepository.findAll();
+        return videoRepository.findAllByOrderByCreatedAtDesc();
     }
 
     public Video getVideo(String id) {
