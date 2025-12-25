@@ -81,12 +81,6 @@ public class AnalyticsController {
         
         return ResponseEntity.ok(analytics);
     }
-
-    @GetMapping("/videos/{id}/views")
-    public ResponseEntity<Long> getVideoViews(@PathVariable String id) {
-        long views = analyticsQueryService.getVideoViews(id);
-        return ResponseEntity.ok(views);
-    }
     
     /**
      * Get queue status

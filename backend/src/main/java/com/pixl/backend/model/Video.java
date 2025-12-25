@@ -36,6 +36,12 @@ public class Video {
     @Column(name = "thumbnail_path")
     private String thumbnailPath;
 
+    @Column(name = "duration_seconds", columnDefinition = "INT DEFAULT 0")
+    private Integer durationSeconds;
+
+    @Column(name = "views_count", columnDefinition = "BIGINT DEFAULT 0")
+    private Long viewsCount = 0L;
+
     protected Video() {
     }
 
@@ -118,5 +124,21 @@ public class Video {
 
     public void setThumbnailPath(String thumbnailPath) {
         this.thumbnailPath = thumbnailPath;
+    }
+
+    public Integer getDurationSeconds() {
+        return durationSeconds;
+    }
+
+    public void setDurationSeconds(Integer durationSeconds) {
+        this.durationSeconds = durationSeconds;
+    }
+
+    public Long getViewsCount() {
+        return viewsCount;
+    }
+
+    public void setViewsCount(Long viewsCount) {
+        this.viewsCount = viewsCount;
     }
 }

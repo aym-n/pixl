@@ -47,6 +47,19 @@ public class VideoService {
         return videoRepository.findById(id).orElseThrow(() -> new RuntimeException("Video not found"));
     }
 
+    public void incrementVideoViews(String id) {
+        Video video = getVideo(id);
+        Long currentViews = video.getViewsCount();
+        if(currentViews == null) {
+            currentViews = 0L;
+        }
+        video.setViewsCount(currentViews + 1);
+        videoRepository.save(video);
+
+        System.out.println("✅ Video views incremented for video ID: " + id);
+        System.out.println("    New views count: " + video.getViewsCount());
+    }
+
     public VideoService(VideoRepository videoRepository) {
         this.videoRepository = videoRepository;
     }

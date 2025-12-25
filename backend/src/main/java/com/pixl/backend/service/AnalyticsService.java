@@ -5,6 +5,7 @@ import com.clickhouse.data.ClickHouseFormat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.pixl.backend.dto.AnalyticsEvent;
+
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.api.trace.Span;
@@ -32,6 +33,7 @@ public class AnalyticsService {
     private final Counter eventsQueuedCounter;
     private final Counter eventsFlushedCounter;
     private final ObjectMapper objectMapper;
+    private final VideoService videoService;
     
     // Batch configuration
     private static final int BATCH_SIZE = 100;
@@ -44,12 +46,13 @@ public class AnalyticsService {
     
     public AnalyticsService(@Qualifier("clickhouseClient") Client clickhouseClient,
                            Tracer tracer,
-                           MeterRegistry meterRegistry) {
+                           MeterRegistry meterRegistry, VideoService videoService) {
         this.clickhouseClient = clickhouseClient;
         this.tracer = tracer;
         this.eventsQueuedCounter = meterRegistry.counter("analytics.events.queued");
         this.eventsFlushedCounter = meterRegistry.counter("analytics.events.flushed");
         this.objectMapper = new ObjectMapper();
+        this.videoService = videoService;
         
         System.out.println("📊 Analytics Service initialized with batch size: " + BATCH_SIZE);
     }
@@ -139,7 +142,14 @@ public class AnalyticsService {
             
             eventsFlushedCounter.increment(batch.size());
             span.addEvent("Batch insert completed");
-            
+
+            for (AnalyticsEvent e : batch) {
+                if ("view".equals(e.getEventType())) {
+                    videoService.incrementVideoViews(e.getVideoId());
+                    System.out.println("🔍 Incremented view count for video ID: " + e.getVideoId());
+                }
+            }
+
             System.out.println("✅ Flushed " + batch.size() + " events to ClickHouse");
             
         } catch (Exception e) {

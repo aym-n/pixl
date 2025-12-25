@@ -15,7 +15,7 @@ interface Video {
   fileSize: number;
   status: string;
   createdAt: string;
-  viewCount: number;
+  viewsCount: number | null;
   thumbnailPath?: string;
 }
 
@@ -56,14 +56,12 @@ export default function VideoPlayerPage() {
     trackEvent({ eventType: 'view' });
   }, [trackEvent]);
 
+
   useEffect(() => {
     fetch(`http://localhost:8080/api/videos/${id}`)
       .then(res => res.json())
-      .then(async data => {
-        const views = await fetch(
-          `http://localhost:8080/api/analytics/videos/${id}/views`
-        ).then(r => r.json());
-        data.viewCount = views;
+      .then(data => {
+        console.log('Fetched video data:', data);
         setVideo(data);
       })
       .finally(() => setLoading(false));
@@ -538,7 +536,7 @@ export default function VideoPlayerPage() {
               <div className="flex items-center gap-6 text-slate-300">
                 <div className="flex items-center gap-2">
                   <Eye className="w-5 h-5" />
-                  <span className="font-medium">{video.viewCount.toLocaleString()} views</span>
+                  <span className="font-medium">{video.viewsCount ? video.viewsCount.toLocaleString() : 0} views</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5" />

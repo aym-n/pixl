@@ -3,6 +3,8 @@ package com.pixl.backend.service;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +39,7 @@ public class ChunkedUploadService {
     private final Counter uploadFailureCounter;
     private final Timer chunkUploadTimer;
     private final ProgressNotificationService progressNotificationService;
+    private final FFProbeService ffProbeService;
 
     private final ThumbnailService thumbnailService;
 
@@ -46,7 +49,7 @@ public class ChunkedUploadService {
     public ChunkedUploadService(UploadSessionRepository uploadSessionRepository, VideoRepository videoRepository,
             MinioService minioService, Tracer tracer, Counter videoUploadCounter, Counter uploadSuccessCounter,
             Counter uploadFailureCounter, Timer chunkUploadTimer, TranscodeService transcodeService,
-            ThumbnailService thumbnailService, ProgressNotificationService progressNotificationService) {
+            ThumbnailService thumbnailService, ProgressNotificationService progressNotificationService, FFProbeService ffProbeService) {
         this.uploadSessionRepository = uploadSessionRepository;
         this.videoRepository = videoRepository;
         this.minioService = minioService;
@@ -58,6 +61,7 @@ public class ChunkedUploadService {
         this.transcodeService = transcodeService;
         this.thumbnailService = thumbnailService;
         this.progressNotificationService = progressNotificationService;
+        this.ffProbeService = ffProbeService;
     }
 
     public InitiateUploadResponse initiateUpload(String filename, Long fileSize, String title, String description)
@@ -194,6 +198,30 @@ public class ChunkedUploadService {
 
             byte[] finalFileData = outputStream.toByteArray();
             span.setAttribute("final.file.size", finalFileData.length);
+
+            Span probeSpan = tracer.spanBuilder("ffprobe-metadata-extraction").startSpan();
+            try (Scope probeScope = probeSpan.makeCurrent()) {
+                Path tempVideoPath = Files.createTempFile("video-metadata-", ".mp4");
+                Files.write(tempVideoPath, finalFileData);
+
+                FFProbeService.VideoMetadata metadata = ffProbeService.extractMetadata(tempVideoPath);
+                probeSpan.setAttribute("video.duration.seconds", metadata.getDurationSeconds());
+                probeSpan.setAttribute("video.width", metadata.getWidth());
+                probeSpan.setAttribute("video.height", metadata.getHeight());
+                probeSpan.addEvent("FFProbe metadata extraction completed" + metadata.toString());
+
+                Video video = videoRepository.findById(uploadId)
+                        .orElseThrow(() -> new RuntimeException("Video not found"));
+                video.setDurationSeconds(metadata.getDurationSeconds());
+                videoRepository.save(video);
+
+                Files.deleteIfExists(tempVideoPath);
+            } catch (Exception e) {
+                probeSpan.recordException(e);
+                System.err.println("⚠️  Failed to extract video metadata: " + e.getMessage());
+            } finally {
+                probeSpan.end();
+            }
 
             Span uploadSpan = tracer.spanBuilder("upload-final-file").startSpan();
             try (Scope uploadScope = uploadSpan.makeCurrent()) {

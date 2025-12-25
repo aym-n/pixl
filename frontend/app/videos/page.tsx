@@ -18,7 +18,8 @@ interface Video {
   fileSize: number;
   status: string;
   createdAt: string;
-  thumbnailPath: string | null;
+  viewsCount: number | null;
+  thumbnailPath?: string | null;
 }
 
 export default function VideosPage() {
@@ -99,7 +100,7 @@ export default function VideosPage() {
                   fileSize={video.fileSize}
                   status={video.status}
                   description={video.description}
-                  views={100}
+                  views={video.viewsCount ? video.viewsCount : 0}
                 />
               ))}
             </div>
