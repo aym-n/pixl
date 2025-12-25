@@ -52,7 +52,8 @@ public class FFmpegService {
                 "-c:v", "libx264",           // H.264 codec
                 "-preset", "medium",          // Encoding speed/quality tradeoff
                 "-crf", "23",                 // Constant Rate Factor (quality)
-                "-vf", String.format("scale=%d:%d", settings.width, settings.height),
+                "-vf", String.format("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2", 
+    settings.width, settings.height, settings.width, settings.height),
                 "-c:a", "aac",                // Audio codec
                 "-b:a", "128k",               // Audio bitrate
                 "-movflags", "+faststart",    // Enable streaming
