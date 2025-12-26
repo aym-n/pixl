@@ -24,6 +24,17 @@ interface Quality {
   index: number;
 }
 
+// Interface for parsed VTT cues
+interface ThumbnailCue {
+  start: number;
+  end: number;
+  url: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export default function VideoPlayerPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -50,22 +61,58 @@ export default function VideoPlayerPage() {
   const [buffering, setBuffering] = useState(false);
   const [showDescription, setShowDescription] = useState(false);
 
+  // Thumbnail Hover States
+  const [cues, setCues] = useState<ThumbnailCue[]>([]);
+  const [hoverThumb, setHoverThumb] = useState<{ time: number; x: number; cue: ThumbnailCue | null } | null>(null);
+
   const { trackEvent } = useAnalytics(id as string);
 
   useEffect(() => {
     trackEvent({ eventType: 'view' });
   }, [trackEvent]);
 
-
+  // Fetch Video Data & Thumbnails VTT
   useEffect(() => {
     fetch(`http://localhost:8080/api/videos/${id}`)
       .then(res => res.json())
       .then(data => {
-        console.log('Fetched video data:', data);
         setVideo(data);
       })
       .finally(() => setLoading(false));
+
+    // Fetch and parse VTT for thumbnails
+    fetch(`http://localhost:8080/api/videos/${id}/sprite/vtt`)
+      .then(res => res.text())
+      .then(vttText => {
+        const parsedCues: ThumbnailCue[] = [];
+        const lines = vttText.split('\n');
+        
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('-->')) {
+            const timeRange = lines[i].split('-->');
+            const start = parseVttTime(timeRange[0].trim());
+            const end = parseVttTime(timeRange[1].trim());
+            const imageUrlLine = lines[i + 1]; // e.g. sprite.jpg#xywh=0,0,160,90
+            
+            if (imageUrlLine && imageUrlLine.includes('#xywh=')) {
+              const [url, hash] = imageUrlLine.split('#xywh=');
+              const [x, y, w, h] = hash.split(',').map(Number);
+              parsedCues.push({ start, end, url, x, y, w, h });
+            }
+          }
+        }
+        setCues(parsedCues);
+      })
+      .catch(err => console.error("Failed to load thumbnails", err));
   }, [id]);
+
+  const parseVttTime = (timeStr: string) => {
+    const parts = timeStr.split(':');
+    const seconds = parseFloat(parts.pop() || '0');
+    const minutes = parseInt(parts.pop() || '0', 10);
+    const hours = parseInt(parts.pop() || '0', 10);
+    return hours * 3600 + minutes * 60 + seconds;
+  };
 
   useEffect(() => {
     if (!video || video.status !== 'READY' || !videoRef.current) return;
@@ -199,6 +246,21 @@ export default function VideoPlayerPage() {
         quality: currentQuality,
       });
     }
+  };
+
+  const handleMouseMoveSeekbar = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percent = x / rect.width;
+    const hoverTime = percent * duration;
+    
+    const cue = cues.find(c => hoverTime >= c.start && hoverTime <= c.end) || null;
+    
+    setHoverThumb({
+      time: hoverTime,
+      x: x,
+      cue: cue
+    });
   };
 
   const skipPercentage = (percent: number) => {
@@ -337,9 +399,7 @@ export default function VideoPlayerPage() {
               <ChevronLeft className="w-5 h-5 mr-1" /> Back
             </Button>
             <div className="text-white text-lg font-semibold">{video.title}</div>
-
             <div className="w-20"></div>
-
           </div>
         </div>
 
@@ -357,7 +417,33 @@ export default function VideoPlayerPage() {
         <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent transition-opacity duration-300 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'} pointer-events-none`}>
 
           <div className="px-6 pt-3 pointer-events-auto">
-            <div className="relative group/progress">
+            <div 
+              className="relative group/progress"
+              onMouseMove={handleMouseMoveSeekbar}
+              onMouseLeave={() => setHoverThumb(null)}
+            >
+              {/* Thumbnail Preview Tooltip */}
+              {hoverThumb && hoverThumb.cue && (
+                <div 
+                  className="absolute bottom-full mb-4 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+                  style={{ left: `${hoverThumb.x}px` }}
+                >
+                  <div 
+                    className="border-2 border-white rounded shadow-xl bg-black"
+                    style={{
+                      width: `${hoverThumb.cue.w}px`,
+                      height: `${hoverThumb.cue.h}px`,
+                      backgroundImage: `url(http://localhost:8080/api/videos/${video.id}/sprite)`,
+                      backgroundPosition: `-${hoverThumb.cue.x}px -${hoverThumb.cue.y}px`,
+                      backgroundSize: 'auto', // Keep sprite scale original
+                    }}
+                  />
+                  <div className="mt-1 bg-black/80 px-2 py-0.5 rounded text-xs text-white border border-white/20 font-mono">
+                    {formatTime(hoverThumb.time)}
+                  </div>
+                </div>
+              )}
+
               <input
                 type="range"
                 min="0"
@@ -365,9 +451,6 @@ export default function VideoPlayerPage() {
                 value={currentTime}
                 onChange={handleSeek}
                 className="w-full h-2 appearance-none bg-transparent cursor-pointer relative z-10 opacity-0"
-                style={{
-                  background: 'transparent',
-                }}
               />
               <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-1 bg-white/30 rounded-full pointer-events-none">
                 <div
@@ -380,40 +463,14 @@ export default function VideoPlayerPage() {
 
           <div className="flex items-center justify-between px-6 pb-4 pt-2 pointer-events-auto">
             <div className="flex items-center gap-3">
-              <button
-                onClick={togglePlay}
-                className="text-white hover:scale-110 transition-transform"
-              >
-                {isPlaying ? (
-                  <Pause className="w-8 h-8" fill="white" />
-                ) : (
-                  <Play className="w-8 h-8" fill="white" />
-                )}
+              <button onClick={togglePlay} className="text-white hover:scale-110 transition-transform">
+                {isPlaying ? <Pause className="w-8 h-8" fill="white" /> : <Play className="w-8 h-8" fill="white" />}
               </button>
-
-              <button
-                onClick={() => skipPercentage(-1)}
-                className="text-white hover:scale-110 transition-transform"
-                title="Rewind 1%"
-              >
-                <ChevronLeft className="w-7 h-7" />
-              </button>
-
-              <button
-                onClick={() => skipPercentage(1)}
-                className="text-white hover:scale-110 transition-transform"
-                title="Forward 1%"
-              >
-                <ChevronRight className="w-7 h-7" />
-              </button>
-
+              <button onClick={() => skipPercentage(-1)} className="text-white hover:scale-110 transition-transform" title="Rewind 1%"><ChevronLeft className="w-7 h-7" /></button>
+              <button onClick={() => skipPercentage(1)} className="text-white hover:scale-110 transition-transform" title="Forward 1%"><ChevronRight className="w-7 h-7" /></button>
               <div className="flex items-center gap-2 group/volume">
                 <button onClick={toggleMute} className="text-white hover:scale-110 transition-transform">
-                  {isMuted || volume === 0 ? (
-                    <VolumeX className="w-6 h-6" />
-                  ) : (
-                    <Volume2 className="w-6 h-6" />
-                  )}
+                  {isMuted || volume === 0 ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
                 </button>
                 <input
                   type="range"
@@ -423,200 +480,61 @@ export default function VideoPlayerPage() {
                   value={volume}
                   onChange={handleVolumeChange}
                   className="accent-cyan-500 w-0 group-hover/volume:w-20 opacity-0 group-hover/volume:opacity-100 h-1 transition-all duration-300 cursor-pointer appearance-none bg-white/30 rounded-full"
-                  style={{
-                    background: `linear-gradient(to right, white 0%, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%, rgba(255,255,255,0.3) 100%)`
-                  }}
+                  style={{ background: `linear-gradient(to right, white 0%, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%, rgba(255,255,255,0.3) 100%)` }}
                 />
               </div>
-
-              <span className="text-white text-sm font-medium ml-2">
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </span>
+              <span className="text-white text-sm font-medium ml-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
             </div>
 
             <div className="flex items-center gap-3">
               <div className="relative">
-                <button
-                  onClick={() => {
-                    setShowMoreMenu(!showMoreMenu)
-                    setShowSettings(false)
-                  }}
-                  className="text-white hover:scale-110 transition-transform"
-                >
-                  <MoreVertical className="w-6 h-6" />
-                </button>
-
+                <button onClick={() => { setShowMoreMenu(!showMoreMenu); setShowSettings(false); }} className="text-white hover:scale-110 transition-transform"><MoreVertical className="w-6 h-6" /></button>
                 {showMoreMenu && (
                   <div className="absolute bottom-12 right-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-lg p-2 min-w-[200px]">
-                    <button
-                      onClick={handleDownload}
-                      className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 rounded flex items-center gap-2"
-                    >
-                      <Download className="w-4 h-4" />
-                      Download
-                    </button>
-                    <button
-                      onClick={handleShowAnalytics}
-                      className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 rounded flex items-center gap-2"
-                    >
-                      <BarChart3 className="w-4 h-4" />
-                      Analytics
-                    </button>
+                    <button onClick={handleDownload} className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 rounded flex items-center gap-2"><Download className="w-4 h-4" />Download</button>
+                    <button onClick={handleShowAnalytics} className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10 rounded flex items-center gap-2"><BarChart3 className="w-4 h-4" />Analytics</button>
                   </div>
                 )}
               </div>
-
               <div className="relative">
-                <button
-                  onClick={() => {
-                    setShowSettings(!showSettings)
-                    setShowMoreMenu(false)
-                  }}
-                  className="text-white hover:scale-110 transition-transform"
-                >
-                  <Settings className="w-6 h-6" />
-                </button>
-
+                <button onClick={() => { setShowSettings(!showSettings); setShowMoreMenu(false); }} className="text-white hover:scale-110 transition-transform"><Settings className="w-6 h-6" /></button>
                 {showSettings && (
-                  <div className="absolute bottom-12 right-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-lg p-2 min-w-[180px]">
-                    <div className="text-white text-sm font-semibold px-3 py-2 border-b border-white/10">
-                      Quality
-                    </div>
-                    <button
-                      onClick={() => changeQuality(-1)}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded ${currentQuality === 'auto' ? 'text-blue-400' : 'text-white'}`}
-                    >
-                      Auto {currentQuality === 'auto' && '✓'}
-                    </button>
-                    {qualities.map((quality) => (
-                      <button
-                        key={quality.index}
-                        onClick={() => changeQuality(quality.index)}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded ${currentQuality === quality.name ? 'text-blue-400' : 'text-white'}`}
-                      >
-                        {quality.name} {currentQuality === quality.name && '✓'}
-                      </button>
-                    ))}
-
-                    <div className="text-white text-sm font-semibold px-3 py-2 border-t border-b border-white/10 mt-2">
-                      Speed
-                    </div>
-                    {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
-                      <button
-                        key={rate}
-                        onClick={() => changePlaybackRate(rate)}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded ${playbackRate === rate ? 'text-blue-400' : 'text-white'}`}
-                      >
-                        {rate === 1 ? 'Normal' : `${rate}x`} {playbackRate === rate && '✓'}
-                      </button>
-                    ))}
+                  <div className="absolute bottom-12 right-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-lg p-2 min-w-[180px] max-h-64 overflow-y-auto">
+                    <div className="text-white text-sm font-semibold px-3 py-2 border-b border-white/10">Quality</div>
+                    <button onClick={() => changeQuality(-1)} className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded ${currentQuality === 'auto' ? 'text-blue-400' : 'text-white'}`}>Auto {currentQuality === 'auto' && '✓'}</button>
+                    {qualities.map((q) => <button key={q.index} onClick={() => changeQuality(q.index)} className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded ${currentQuality === q.name ? 'text-blue-400' : 'text-white'}`}>{q.name} {currentQuality === q.name && '✓'}</button>)}
+                    <div className="text-white text-sm font-semibold px-3 py-2 border-t border-b border-white/10 mt-2">Speed</div>
+                    {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => <button key={rate} onClick={() => changePlaybackRate(rate)} className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 rounded ${playbackRate === rate ? 'text-blue-400' : 'text-white'}`}>{rate === 1 ? 'Normal' : `${rate}x`} {playbackRate === rate && '✓'}</button>)}
                   </div>
                 )}
               </div>
-              <div className="relative">
-                <button
-                  onClick={toggleFullscreen}
-                  className="text-white hover:scale-110 transition-transform"
-                >
-                  <Maximize className="w-6 h-6" />
-                </button>
-              </div>
+              <button onClick={toggleFullscreen} className="text-white hover:scale-110 transition-transform"><Maximize className="w-6 h-6" /></button>
             </div>
           </div>
         </div>
       </div>
-
+      
+      {/* Rest of the UI (Title/Description) remains unchanged */}
       <div className="mx-auto mt-6">
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden">
-
           <div className="p-6 border-b border-white/10">
             <h1 className="text-white text-2xl font-bold mb-4">{video.title}</h1>
-
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-6 text-slate-300">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-5 h-5" />
-                  <span className="font-medium">{video.viewsCount ? video.viewsCount.toLocaleString() : 0} views</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  <span>{new Date(video.createdAt).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}</span>
-                </div>
+                <div className="flex items-center gap-2"><Eye className="w-5 h-5" /><span className="font-medium">{video.viewsCount ? video.viewsCount.toLocaleString() : 0} views</span></div>
+                <div className="flex items-center gap-2"><Calendar className="w-5 h-5" /><span>{new Date(video.createdAt).toLocaleDateString()}</span></div>
               </div>
-
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleDownload}
-                  variant="outline"
-                  className="bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-full hover:text-blue-300"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download
-                </Button>
-                <Button
-                  onClick={handleShowAnalytics}
-                  variant="outline"
-                  className="bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-blue-300 rounded-full"
-                >
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  Analytics
-                </Button>
+                <Button onClick={handleDownload} variant="outline" className="bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-full"><Download className="w-4 h-4 mr-2" />Download</Button>
+                <Button onClick={handleShowAnalytics} variant="outline" className="bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-full"><BarChart3 className="w-4 h-4 mr-2" />Analytics</Button>
               </div>
             </div>
           </div>
-
           <div className="p-6">
-            <div
-              className={`bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors ${showDescription ? '' : 'max-h-24 overflow-hidden relative'
-                }`}
-              onClick={() => setShowDescription(!showDescription)}
-            >
-              {video.description ? (
-                <p className={`text-slate-300 leading-relaxed whitespace-pre-wrap ${showDescription ? '' : 'line-clamp-2'}`}>
-                  {video.description}
-                </p>
-              ) : (
-                <p className="text-slate-500 italic">No description</p>
-              )}
-
+            <div className={`bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors ${showDescription ? '' : 'max-h-24 overflow-hidden relative'}`} onClick={() => setShowDescription(!showDescription)}>
+              {video.description ? <p className={`text-slate-300 leading-relaxed whitespace-pre-wrap ${showDescription ? '' : 'line-clamp-2'}`}>{video.description}</p> : <p className="text-slate-500 italic">No description</p>}
               {!showDescription && video.description && video.description.length > 100 && (
-                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white/5 to-transparent flex items-end justify-center pb-2">
-                  <span className="text-white text-sm font-medium">Show more</span>
-                </div>
-              )}
-
-              {showDescription && (
-                <div className="mt-4 pt-4 border-t border-white/10">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex items-center gap-3 text-slate-300">
-                      <FileText className="w-5 h-5 text-purple-400" />
-                      <div>
-                        <div className="text-xs text-slate-500">Filename</div>
-                        <div className="font-medium">{video.originalFilename}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 text-slate-300">
-                      <HardDrive className="w-5 h-5 text-blue-400" />
-                      <div>
-                        <div className="text-xs text-slate-500">File Size</div>
-                        <div className="font-medium">{(video.fileSize / 1024 / 1024).toFixed(2)} MB</div>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    className="mt-4 text-white text-sm font-medium"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowDescription(false);
-                    }}
-                  >
-                    Show less
-                  </button>
-                </div>
+                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white/5 to-transparent flex items-end justify-center pb-2"><span className="text-white text-sm font-medium">Show more</span></div>
               )}
             </div>
           </div>

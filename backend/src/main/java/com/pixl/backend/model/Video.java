@@ -3,6 +3,7 @@ package com.pixl.backend.model;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
+
 @Entity
 @Table(name = "videos")
 public class Video {
@@ -41,6 +42,12 @@ public class Video {
 
     @Column(name = "views_count", columnDefinition = "BIGINT DEFAULT 0")
     private Long viewsCount = 0L;
+
+    @Column(name = "sprite_path")
+    private String spritePath;
+
+    @Column(name = "vtt_path")
+    private String vTTPath;
 
     protected Video() {
     }
@@ -140,5 +147,21 @@ public class Video {
 
     public void setViewsCount(Long viewsCount) {
         this.viewsCount = viewsCount;
+    }
+
+    public String getSpritePath() {
+        return spritePath;
+    }
+
+    public void setSpritePath(String spritePath) {
+        this.spritePath = spritePath;
+    }
+
+    public String getVTTPath() {
+        return vTTPath;
+    }
+
+    public void setVTTPath(String vTTPath) {
+        this.vTTPath = vTTPath;
     }
 }

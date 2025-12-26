@@ -182,4 +182,43 @@ public class VideoController {
             return ResponseEntity.notFound().build();
         }
     }
+
+    @GetMapping("/{id}/sprite")
+    public ResponseEntity<byte[]> getSprite(@PathVariable String id) {
+        try {
+            Video video = videoService.getVideo(id);
+            if (video.getSpritePath() == null) {
+                return ResponseEntity.notFound().build();
+            }
+            byte[] spriteData = minioService.downloadFileAsBytes(
+                    "thumbnails",
+                    video.getSpritePath());
+            return ResponseEntity.ok()
+                    .header("Content-Type", "image/jpeg")
+                    .header("Cache-Control", "max-age=86400") // Cache for 1 day
+                    .body(spriteData);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{id}/sprite/vtt")
+    public ResponseEntity<byte[]> getSpriteVTT(@PathVariable String id) {
+        try {
+            Video video = videoService.getVideo(id);
+            if (video.getVTTPath() == null) {
+                return ResponseEntity.notFound().build();   
+            }
+
+            byte[] vttData = minioService.downloadFileAsBytes(
+                    "thumbnails",
+                    video.getVTTPath());
+            return ResponseEntity.ok()
+                    .header("Content-Type", "text/vtt")
+                    .header("Cache-Control", "max-age=86400") // Cache for 1 day
+                    .body(vttData);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
 }

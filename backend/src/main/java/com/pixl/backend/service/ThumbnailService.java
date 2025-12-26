@@ -94,11 +94,39 @@ public class ThumbnailService {
                 extractSpan.end();
             }
 
+            int durationSeconds = (int) video.getDurationSeconds();
+
+            Span spriteSpan = tracer.spanBuilder("generate-thumbnail-sprite").startSpan();
+            Path spritePath = Files.createTempFile("sprite-", ".jpg");
+            try (Scope spriteScope = spriteSpan.makeCurrent()) {
+                ProcessBuilder spriteBuilder = new ProcessBuilder(
+                        "ffmpeg",
+                        "-y",
+                        "-i", inputPath.toString(),
+                        "-vf", "fps=1/10,scale=160:-1,tile=5x5",
+                        "-q:v", "2",
+                        spritePath.toString());
+
+                spriteSpan.addEvent("FFmpeg thumbnail sprite generation started");
+                Process spriteProcess = spriteBuilder.start();
+                int spriteExitCode = spriteProcess.waitFor();
+
+                if (spriteExitCode != 0) {
+                    String error = readProcessError(spriteProcess);
+                    throw new RuntimeException("FFmpeg thumbnail sprite generation failed: " + error);
+                }
+                spriteSpan.addEvent("Thumbnail sprite generated");
+            } finally {
+                spriteSpan.end();
+            }
+
             Span uploadSpan = tracer.spanBuilder("upload-thumbnail").startSpan();
             String thumbnailObjectName = null;
+            String spriteObjectName = null;
 
             try (Scope uploadScope = uploadSpan.makeCurrent()) {
                 thumbnailObjectName = videoId + "-thumb.jpg";
+                spriteObjectName = videoId + "-sprite.jpg";
 
                 try (InputStream stream = Files.newInputStream(thumbnailPath)) {
                     long size = Files.size(thumbnailPath);
@@ -107,7 +135,22 @@ public class ThumbnailService {
 
                 uploadSpan.addEvent("Thumbnail uploaded to MinIO");
 
+                try (InputStream spriteStream = Files.newInputStream(spritePath)) {
+                    long spriteSize = Files.size(spritePath);
+                    minioService.uploadFile(thumbnailsBucket, spriteObjectName, spriteStream, spriteSize, "text/vtt");
+                }
+
+                Path vtt = generateVtt(videoId, durationSeconds, 10, 160, 90, 5);
+                try (InputStream vttStream = Files.newInputStream(vtt)) {
+                    long vttSize = Files.size(vtt);
+                    minioService.uploadFile(thumbnailsBucket, videoId + "-sprite.vtt", vttStream, vttSize, "text/vtt");
+                }  
+
+                uploadSpan.addEvent("Thumbnail sprite VTT uploaded to MinIO");
+
                 video.setThumbnailPath(thumbnailObjectName);
+                video.setSpritePath(spriteObjectName);
+                video.setVTTPath(videoId + "-sprite.vtt");
                 videoRepository.save(video);
 
                 System.out.println("[ThumbnailService] Thumbnail uploaded: " + thumbnailObjectName);
@@ -119,6 +162,9 @@ public class ThumbnailService {
                     Files.deleteIfExists(inputPath);
                 if (thumbnailPath != null)
                     Files.deleteIfExists(thumbnailPath);
+                if (spritePath != null)
+                    Files.deleteIfExists(spritePath);
+                
             }
 
             span.addEvent("Thumbnail generation completed");
@@ -147,4 +193,55 @@ public class ThumbnailService {
             return "Could not read error stream";
         }
     }
+
+    private Path generateVtt(
+            String videoId,
+            int durationSeconds,
+            int intervalSeconds,
+            int thumbWidth,
+            int thumbHeight,
+            int columns) throws IOException {
+
+        Path vttPath = Files.createTempFile("sprite-", ".vtt");
+        String spriteUrl = videoId + "-sprite.jpg";
+
+        StringBuilder vtt = new StringBuilder("WEBVTT\n\n");
+
+        int x = 0, y = 0, index = 0;
+
+        for (int t = 0; t < durationSeconds; t += intervalSeconds) {
+            vtt.append(formatTime(t))
+                    .append(" --> ")
+                    .append(formatTime(Math.min(t + intervalSeconds, durationSeconds)))
+                    .append("\n");
+
+            vtt.append(spriteUrl)
+                    .append("#xywh=")
+                    .append(x).append(",")
+                    .append(y).append(",")
+                    .append(thumbWidth).append(",")
+                    .append(thumbHeight)
+                    .append("\n\n");
+
+            x += thumbWidth;
+            index++;
+
+            if (index % columns == 0) {
+                x = 0;
+                y += thumbHeight;
+            }
+        }
+
+        Files.writeString(vttPath, vtt.toString());
+        return vttPath;
+    }
+
+    private String formatTime(int seconds) {
+        return String.format(
+                "%02d:%02d:%02d.000",
+                seconds / 3600,
+                (seconds % 3600) / 60,
+                seconds % 60);
+    }
+
 }
