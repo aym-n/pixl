@@ -15,6 +15,18 @@ const formatDate = (dateString: string) => {
     });
 };
 
+const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    if (hours > 0) {
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 type VideoCardProps = {
     id: string;
     title: string;
@@ -22,10 +34,11 @@ type VideoCardProps = {
     fileSize: number;
     status: string;
     description?: string;
+    duration: number;
     views?: number;
 };
 
-export default function VideoCard({ id, title, uploadDate, fileSize, status, description, views }: VideoCardProps) {
+export default function VideoCard({ id, title, uploadDate, fileSize, status, description, duration, views }: VideoCardProps) {
     const [isHovered, setIsHovered] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -92,7 +105,7 @@ export default function VideoCard({ id, title, uploadDate, fileSize, status, des
 
 
                 <div className="absolute bottom-2 right-2 bg-black bg-opacity-90 text-white text-xs font-semibold px-2 py-1 rounded">
-                    12:34
+                    {formatDuration(duration)}
                 </div>
 
                 <div className={`mt-2 ml-2 relative inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-sm border shadow-lg transition-all duration-300 ${isReady ? "bg-green-900/50 border-green-100/10" : "bg-yellow-900/50 border-yellow-100/10"}`} >

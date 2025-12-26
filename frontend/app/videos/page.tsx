@@ -19,6 +19,7 @@ interface Video {
   status: string;
   createdAt: string;
   viewsCount: number | null;
+  durationSeconds: number;
   thumbnailPath?: string | null;
 }
 
@@ -100,6 +101,7 @@ export default function VideosPage() {
                   fileSize={video.fileSize}
                   status={video.status}
                   description={video.description}
+                  duration={video.durationSeconds}
                   views={video.viewsCount ? video.viewsCount : 0}
                 />
               ))}
