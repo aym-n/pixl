@@ -64,5 +64,7 @@ public class VideoService {
         this.videoRepository = videoRepository;
     }
     
-
+    public void deleteVideo(String id) {
+        videoRepository.deleteById(id);
+    }
 }

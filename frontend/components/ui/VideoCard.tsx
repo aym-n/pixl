@@ -1,7 +1,8 @@
 'use client';
-import { Download, Play, MoreVertical, BarChart3, ExternalLink, ArrowRight } from 'lucide-react';
+import { Download, Play, MoreVertical, BarChart3, ExternalLink, ArrowRight, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
+import { toast } from 'sonner';
 
 const formatFileSize = (bytes: number) => {
     return (bytes / 1024 / 1024).toFixed(2) + ' MB';
@@ -72,6 +73,32 @@ export default function VideoCard({ id, title, uploadDate, fileSize, status, des
 
         if (action === 'download') {
             router.push(`http://localhost:8080/api/videos/${id}/download`);
+        } else if (action === 'delete') {
+
+            toast.warning("Are you sure you want to delete the video?", {
+                action: {
+                    label: "Delete",
+                    onClick: async () => {
+                        try {
+                            const res = await fetch(
+                                `http://localhost:8080/api/videos/${id}`,
+                                { method: "DELETE" }
+                            );
+
+                            if (!res.ok) {
+                                throw new Error("Failed to delete video");
+                            }
+
+                            toast.success("Video deleted successfully");
+
+                        } catch (err) {
+                            toast.error("Failed to delete video");
+                            console.error(err);
+                        }
+                    },
+                },
+            });
+
         } else if (action === 'analytics') {
             router.push(`/analytics/video/${id}`);
         }
@@ -180,6 +207,13 @@ export default function VideoCard({ id, title, uploadDate, fileSize, status, des
                                 >
                                     <ExternalLink className="w-4 h-4" />
                                     Open in New Tab
+                                </button>
+                                <button
+                                    onClick={(e) => handleMenuItemClick(e, 'delete')}
+                                    className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-gray-700 flex items-center gap-3"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete Video
                                 </button>
                             </div>
                         )}

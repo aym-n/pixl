@@ -1,5 +1,7 @@
 package com.pixl.backend.controller;
 
+import com.clickhouse.client.api.Client;
+import com.clickhouse.client.api.command.CommandResponse;
 import com.pixl.backend.dto.InitiateUploadRequest;
 import com.pixl.backend.dto.InitiateUploadResponse;
 import com.pixl.backend.dto.UploadProgressResponse;
@@ -10,6 +12,7 @@ import com.pixl.backend.service.VideoService;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,12 +25,14 @@ public class VideoController {
     private final VideoService videoService;
     private final ChunkedUploadService chunkedUploadService;
     private final MinioService minioService;
+    private final Client clickhouseClient;
 
     public VideoController(VideoService videoService, ChunkedUploadService chunkedUploadService,
-            MinioService minioService) {
+            MinioService minioService, @Qualifier("clickhouseClient") Client clickhouseClient) {
         this.videoService = videoService;
         this.chunkedUploadService = chunkedUploadService;
         this.minioService = minioService;
+        this.clickhouseClient = clickhouseClient;
     }
 
     @PostMapping("/upload/initiate")
@@ -217,6 +222,24 @@ public class VideoController {
                     .header("Content-Type", "text/vtt")
                     .header("Cache-Control", "max-age=86400") // Cache for 1 day
                     .body(vttData);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteVideo(@PathVariable String id) {
+        try {
+            System.out.println("🗑️ Deleting video with ID: " + id);
+            minioService.deleteVideoFiles(id);
+            String sql = "DELETE FROM analytics.video_events WHERE video_id = '"+id+"'";
+            System.out.println(sql);
+            CommandResponse deleteAnalytics = clickhouseClient.execute(sql).get();
+            System.out.println("🗑️ Deleted analytics for video ID: " + id);
+            System.out.println("🗑️ ClickHouse delete response: " + deleteAnalytics.getWrittenRows());
+            videoService.deleteVideo(id);
+            
+            return ResponseEntity.noContent().build();
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();
         }
