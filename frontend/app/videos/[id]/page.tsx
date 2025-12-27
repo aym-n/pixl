@@ -6,6 +6,7 @@ import Hls from 'hls.js';
 import { Play, Pause, Volume2, VolumeX, Maximize, Settings, ChevronLeft, ChevronRight, MoreVertical, Download, BarChart3, Eye, Calendar, FileText, HardDrive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { Kbd } from '@/components/ui/kbd';
 
 interface Video {
   id: string;
@@ -60,6 +61,7 @@ export default function VideoPlayerPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [showDescription, setShowDescription] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Thumbnail Hover States
   const [cues, setCues] = useState<ThumbnailCue[]>([]);
@@ -86,14 +88,14 @@ export default function VideoPlayerPage() {
       .then(vttText => {
         const parsedCues: ThumbnailCue[] = [];
         const lines = vttText.split('\n');
-        
+
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].includes('-->')) {
             const timeRange = lines[i].split('-->');
             const start = parseVttTime(timeRange[0].trim());
             const end = parseVttTime(timeRange[1].trim());
             const imageUrlLine = lines[i + 1]; // e.g. sprite.jpg#xywh=0,0,160,90
-            
+
             if (imageUrlLine && imageUrlLine.includes('#xywh=')) {
               const [url, hash] = imageUrlLine.split('#xywh=');
               const [x, y, w, h] = hash.split(',').map(Number);
@@ -113,6 +115,63 @@ export default function VideoPlayerPage() {
     const hours = parseInt(parts.pop() || '0', 10);
     return hours * 3600 + minutes * 60 + seconds;
   };
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (!videoRef.current) return;
+      if ((e.target as HTMLElement).tagName === 'INPUT') return;
+
+      switch (e.key.toLowerCase()) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          togglePlay();
+          break;
+
+        case 'arrowleft':
+        case 'j':
+          skipPercentage(-5);
+          break;
+
+        case 'arrowright':
+        case 'l':
+          skipPercentage(5);
+          break;
+
+        case 'arrowup':
+          e.preventDefault();
+          adjustVolume(0.1);
+          break;
+
+        case 'arrowdown':
+          e.preventDefault();
+          adjustVolume(-0.1);
+          break;
+
+        case 'm':
+          toggleMute();
+          break;
+
+        case 'f':
+          toggleFullscreen();
+          break;
+
+        case 'h':
+          setShowShortcuts(v => !v);
+          break;
+
+        default:
+          if (/^[0-9]$/.test(e.key)) {
+            const num = Number(e.key);
+            videoRef.current.currentTime = (duration * num) / 10;
+          }
+      }
+    };
+
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [duration]);
+
 
   useEffect(() => {
     if (!video || video.status !== 'READY' || !videoRef.current) return;
@@ -253,9 +312,9 @@ export default function VideoPlayerPage() {
     const x = e.clientX - rect.left;
     const percent = x / rect.width;
     const hoverTime = percent * duration;
-    
+
     const cue = cues.find(c => hoverTime >= c.start && hoverTime <= c.end) || null;
-    
+
     setHoverThumb({
       time: hoverTime,
       x: x,
@@ -271,6 +330,16 @@ export default function VideoPlayerPage() {
       setCurrentTime(newTime);
     }
   };
+
+
+  const adjustVolume = (delta: number) => {
+    if (!videoRef.current) return;
+    const newVol = Math.min(1, Math.max(0, videoRef.current.volume + delta));
+    videoRef.current.volume = newVol;
+    setVolume(newVol);
+    setIsMuted(newVol === 0);
+  };
+
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (videoRef.current) {
@@ -370,6 +439,7 @@ export default function VideoPlayerPage() {
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => {
           setIsHovering(false);
+          setShowShortcuts(false);
           if (isPlaying) setShowControls(false);
         }}
       >
@@ -383,6 +453,11 @@ export default function VideoPlayerPage() {
           onPause={() => setIsPlaying(false)}
           onClick={togglePlay}
         />
+
+       {isHovering && <div className="absolute bottom-20 right-6 text-white/60 text-xs flex items-center gap-2 pointer-events-none">
+          <Kbd className="px-2 py-1">h</Kbd>
+          <span>Shortcuts</span>
+        </div>}
 
         {buffering && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -417,18 +492,18 @@ export default function VideoPlayerPage() {
         <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent transition-opacity duration-300 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0'} pointer-events-none`}>
 
           <div className="px-6 pt-3 pointer-events-auto">
-            <div 
+            <div
               className="relative group/progress"
               onMouseMove={handleMouseMoveSeekbar}
               onMouseLeave={() => setHoverThumb(null)}
             >
               {/* Thumbnail Preview Tooltip */}
               {hoverThumb && hoverThumb.cue && (
-                <div 
+                <div
                   className="absolute bottom-full mb-4 -translate-x-1/2 flex flex-col items-center pointer-events-none"
                   style={{ left: `${hoverThumb.x}px` }}
                 >
-                  <div 
+                  <div
                     className="border-2 border-white rounded shadow-xl bg-black"
                     style={{
                       width: `${hoverThumb.cue.w}px`,
@@ -513,7 +588,7 @@ export default function VideoPlayerPage() {
           </div>
         </div>
       </div>
-      
+
       {/* Rest of the UI (Title/Description) remains unchanged */}
       <div className="mx-auto mt-6">
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden">
@@ -540,6 +615,51 @@ export default function VideoPlayerPage() {
           </div>
         </div>
       </div>
+
+      {showShortcuts && (
+        <div className="absolute bottom-23 right-6 z-50">
+    <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-xl px-4 py-3 shadow-2xl w-[260px]">
+      
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-white/70 font-medium">
+          Keyboard shortcuts
+        </span>
+        <Kbd className="text-[10px] px-1.5 py-0.5">
+          h
+        </Kbd>
+      </div>
+
+      <div className="space-y-1.5 text-xs">
+        <ShortcutRow keys="Space / K" action="Play / Pause" />
+        <ShortcutRow keys="← / J" action="Rewind 5s" />
+        <ShortcutRow keys="→ / L" action="Forward 5s" />
+        <ShortcutRow keys="↑ / ↓" action="Volume" />
+        <ShortcutRow keys="M" action="Mute" />
+        <ShortcutRow keys="F" action="Fullscreen" />
+        <ShortcutRow keys="0–9" action="Seek" />
+      </div>
+    </div>
+  </div>
+      )}
+
     </div>
   );
+
+
+
 }
+
+const ShortcutRow = ({ keys, action }: { keys: string; action: string }) => (
+  <div className="flex items-center justify-between text-white/80">
+    <div className="flex gap-1">
+      {keys.split(' / ').map(k => (
+        <Kbd          key={k}
+          className="px-1.5 py-0.5 text-[10px]"
+        >
+          {k}
+        </Kbd>
+      ))}
+    </div>
+    <span className="text-[11px] text-white/60">{action}</span>
+  </div>
+);
